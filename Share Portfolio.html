@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>DSE Portfolio Tracker</title>
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+
+    <style>
+        body { padding: 20px; }
+        table { font-size: 14px; }
+    </style>
+</head>
+<body>
+
+<h3>DSE Portfolio Tracker</h3>
+<hr>
+
+<div class="mb-3">
+    <label>Trading Code:</label>
+    <input id="codeInput" type="text" class="form-control" placeholder="e.g. GP, BXPHARMA">
+</div>
+
+<div class="mb-3">
+    <label>Purchase Price:</label>
+    <input id="priceInput" type="number" class="form-control" step="0.01" placeholder="e.g. 240.50">
+</div>
+
+<button class="btn btn-primary" onclick="addStock()">Add to Portfolio</button>
+<button class="btn btn-success" onclick="refreshPrices()">Refresh Prices</button>
+
+<hr>
+
+<table class="table table-bordered" id="portfolioTable">
+    <thead class="table-dark">
+        <tr>
+            <th>Serial</th>
+            <th>Trading Code</th>
+            <th>Purchase Price</th>
+            <th>LTP*</th>
+            <th>HIGH</th>
+            <th>LOW</th>
+            <th>CLOSEP*</th>
+            <th>YCP*</th>
+            <th>CHANGE</th>
+            <th>TRADE</th>
+            <th>VALUE (mn)</th>
+            <th>VOLUME</th>
+            <th>P/L</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<script>
+let portfolio = [];
+
+async function fetchDSE() {
+    const response = await fetch("https://www.dse.com.bd/latest_share_price_scroll_by_value.php");
+    const text = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(text, "text/html");
+
+    const table = doc.querySelector("table");
+    const rows = [...table.querySelectorAll("tr")];
+    
+    let data = {};
+    rows.slice(1).forEach(tr => {
+        const td = tr.querySelectorAll("td");
+        if (td.length > 0) {
+            const code = td[1].textContent.trim();
+            data[code] = {
+                ltp: td[2].textContent.trim(),
+                high: td[3].textContent.trim(),
+                low: td[4].textContent.trim(),
+                closep: td[5].textContent.trim(),
+                ycp: td[6].textContent.trim(),
+                change: td[7].textContent.trim(),
+                trade: td[8].textContent.trim(),
+                value: td[9].textContent.trim(),
+                volume: td[10].textContent.trim()
+            };
+        }
+    });
+    return data;
+}
+
+function addStock() {
+    const code = document.getElementById("codeInput").value.trim().toUpperCase();
+    const price = parseFloat(document.getElementById("priceInput").value);
+
+    if (!code || isNaN(price)) return alert("Enter valid code & price");
+    
+    portfolio.push({ code, price });
+    render();
+}
+
+async function refreshPrices() {
+    const liveData = await fetchDDE();
+    portfolio = portfolio.map(p => ({
+        ...p,
+        ...liveData[p.code]
+    }));
+    render();
+}
+
+function render() {
+    const tbody = document.querySelector("#portfolioTable tbody");
+    tbody.innerHTML = "";
+    portfolio.forEach((p, i) => {
+        let pl = (p.ltp ? (p.ltp - p.price) : 0).toFixed(2);
+        tbody.innerHTML += `
+            <tr>
+                <td>${i+1}</td>
+                <td>${p.code}</td>
+                <td>${p.price}</td>
+                <td>${p.ltp || '-'}</td>
+                <td>${p.high || '-'}</td>
+                <td>${p.low || '-'}</td>
+                <td>${p.closep || '-'}</td>
+                <td>${p.ycp || '-'}</td>
+                <td>${p.change || '-'}</td>
+                <td>${p.trade || '-'}</td>
+                <td>${p.value || '-'}</td>
+                <td>${p.volume || '-'}</td>
+                <td style="color:${pl >= 0 ? 'green' : 'red'}">${pl}</td>
+            </tr>
+        `;
+    });
+}
+</script>
+
+</body>
+</html>
