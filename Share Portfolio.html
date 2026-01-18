@@ -1,133 +1,159 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>DSE Portfolio Tracker</title>
-    <link rel="stylesheet"
-          href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+<meta charset="UTF-8">
+<title>DSE Portfolio Tracker</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <style>
-        body { padding: 20px; }
-        table { font-size: 14px; }
-    </style>
+<style>
+body { padding: 20px; }
+table { font-size: 14px; }
+.gain { color: green; font-weight: 600; }
+.loss { color: red; font-weight: 600; }
+</style>
 </head>
 <body>
 
 <h3>DSE Portfolio Tracker</h3>
 <hr>
 
-<div class="mb-3">
-    <label>Trading Code:</label>
-    <input id="codeInput" type="text" class="form-control" placeholder="e.g. GP, BXPHARMA">
+<div class="row g-2 mb-3">
+  <div class="col-md-3">
+    <input id="codeInput" type="text" class="form-control" placeholder="Trading Code">
+  </div>
+  <div class="col-md-3">
+    <input id="priceInput" type="number" class="form-control" step="0.01" placeholder="Purchase Price">
+  </div>
+  <div class="col-md-3">
+    <input id="qtyInput" type="number" class="form-control" placeholder="Qty">
+  </div>
+  <div class="col-md-3">
+    <button class="btn btn-primary w-100" onclick="addStock()">Add</button>
+  </div>
 </div>
 
-<div class="mb-3">
-    <label>Purchase Price:</label>
-    <input id="priceInput" type="number" class="form-control" step="0.01" placeholder="e.g. 240.50">
-</div>
-
-<button class="btn btn-primary" onclick="addStock()">Add to Portfolio</button>
-<button class="btn btn-success" onclick="refreshPrices()">Refresh Prices</button>
-
-<hr>
+<button class="btn btn-success mb-3" onclick="refreshPrices()">Refresh Prices</button>
 
 <table class="table table-bordered" id="portfolioTable">
-    <thead class="table-dark">
-        <tr>
-            <th>Serial</th>
-            <th>Trading Code</th>
-            <th>Purchase Price</th>
-            <th>LTP*</th>
-            <th>HIGH</th>
-            <th>LOW</th>
-            <th>CLOSEP*</th>
-            <th>YCP*</th>
-            <th>CHANGE</th>
-            <th>TRADE</th>
-            <th>VALUE (mn)</th>
-            <th>VOLUME</th>
-            <th>P/L</th>
-        </tr>
-    </thead>
-    <tbody></tbody>
+<thead class="table-dark">
+<tr>
+<th>#</th>
+<th>Trading Code</th>
+<th>Purchase Price</th>
+<th>Qty</th>
+<th>LTP*</th>
+<th>HIGH</th>
+<th>LOW</th>
+<th>CLOSEP*</th>
+<th>YCP*</th>
+<th>CHANGE</th>
+<th>TRADE</th>
+<th>VALUE (mn)</th>
+<th>VOLUME</th>
+<th>Total P/L</th>
+</tr>
+</thead>
+<tbody></tbody>
 </table>
 
 <script>
-let portfolio = [];
+let portfolio = JSON.parse(localStorage.getItem("portfolio") || "[]");
 
+// Public proxy for CORS bypass
 async function fetchDSE() {
-    const response = await fetch("https://www.dse.com.bd/latest_share_price_scroll_by_value.php");
-    const text = await response.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(text, "text/html");
+  const proxy = "https://api.allorigins.win/get?url=";
+  const url = encodeURIComponent("https://www.dse.com.bd/latest_share_price_scroll_by_value.php");
+  const response = await fetch(proxy + url);
+  const data = await response.json();
+  
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(data.contents, "text/html");
+  const table = doc.querySelector("table");
+  const rows = [...table.querySelectorAll("tr")];
 
-    const table = doc.querySelector("table");
-    const rows = [...table.querySelectorAll("tr")];
-    
-    let data = {};
-    rows.slice(1).forEach(tr => {
-        const td = tr.querySelectorAll("td");
-        if (td.length > 0) {
-            const code = td[1].textContent.trim();
-            data[code] = {
-                ltp: td[2].textContent.trim(),
-                high: td[3].textContent.trim(),
-                low: td[4].textContent.trim(),
-                closep: td[5].textContent.trim(),
-                ycp: td[6].textContent.trim(),
-                change: td[7].textContent.trim(),
-                trade: td[8].textContent.trim(),
-                value: td[9].textContent.trim(),
-                volume: td[10].textContent.trim()
-            };
-        }
-    });
-    return data;
+  let result = {};
+  rows.slice(1).forEach(tr => {
+    const td = tr.querySelectorAll("td");
+    if (td.length > 10) {
+      const code = td[1].textContent.trim().toUpperCase();
+      result[code] = {
+        ltp: td[2].textContent.trim(),
+        high: td[3].textContent.trim(),
+        low: td[4].textContent.trim(),
+        closep: td[5].textContent.trim(),
+        ycp: td[6].textContent.trim(),
+        change: td[7].textContent.trim(),
+        trade: td[8].textContent.trim(),
+        value: td[9].textContent.trim(),
+        volume: td[10].textContent.trim()
+      };
+    }
+  });
+
+  return result;
 }
 
 function addStock() {
-    const code = document.getElementById("codeInput").value.trim().toUpperCase();
-    const price = parseFloat(document.getElementById("priceInput").value);
+  const code = codeInput.value.trim().toUpperCase();
+  const price = parseFloat(priceInput.value);
+  const qty = parseInt(qtyInput.value);
 
-    if (!code || isNaN(price)) return alert("Enter valid code & price");
-    
-    portfolio.push({ code, price });
-    render();
+  if(!code || isNaN(price) || isNaN(qty) || qty <= 0) {
+    return alert("Enter valid code, price & qty");
+  }
+
+  portfolio.push({ code, price, qty });
+  save();
+  render();
 }
 
 async function refreshPrices() {
-    const liveData = await fetchDDE();
-    portfolio = portfolio.map(p => ({
-        ...p,
-        ...liveData[p.code]
-    }));
-    render();
+  const live = await fetchDSE();
+  portfolio = portfolio.map(p => ({ ...p, ...live[p.code] }));
+  save();
+  render();
 }
 
 function render() {
-    const tbody = document.querySelector("#portfolioTable tbody");
-    tbody.innerHTML = "";
-    portfolio.forEach((p, i) => {
-        let pl = (p.ltp ? (p.ltp - p.price) : 0).toFixed(2);
-        tbody.innerHTML += `
-            <tr>
-                <td>${i+1}</td>
-                <td>${p.code}</td>
-                <td>${p.price}</td>
-                <td>${p.ltp || '-'}</td>
-                <td>${p.high || '-'}</td>
-                <td>${p.low || '-'}</td>
-                <td>${p.closep || '-'}</td>
-                <td>${p.ycp || '-'}</td>
-                <td>${p.change || '-'}</td>
-                <td>${p.trade || '-'}</td>
-                <td>${p.value || '-'}</td>
-                <td>${p.volume || '-'}</td>
-                <td style="color:${pl >= 0 ? 'green' : 'red'}">${pl}</td>
-            </tr>
-        `;
-    });
+  const tbody = document.querySelector("#portfolioTable tbody");
+  tbody.innerHTML = "";
+
+  portfolio.forEach((p,i) => {
+    let totalPL = "-";
+    let css = "";
+
+    if(p.ltp) {
+      const pl = (parseFloat(p.ltp) - p.price) * p.qty;
+      totalPL = pl.toFixed(2);
+      css = pl >= 0 ? "gain" : "loss";
+    }
+
+    tbody.innerHTML += `
+      <tr>
+        <td>${i+1}</td>
+        <td>${p.code}</td>
+        <td>${p.price}</td>
+        <td>${p.qty}</td>
+        <td>${p.ltp || "-"}</td>
+        <td>${p.high || "-"}</td>
+        <td>${p.low || "-"}</td>
+        <td>${p.closep || "-"}</td>
+        <td>${p.ycp || "-"}</td>
+        <td>${p.change || "-"}</td>
+        <td>${p.trade || "-"}</td>
+        <td>${p.value || "-"}</td>
+        <td>${p.volume || "-"}</td>
+        <td class="${css}">${totalPL}</td>
+      </tr>
+    `;
+  });
 }
+
+function save() {
+  localStorage.setItem("portfolio", JSON.stringify(portfolio));
+}
+
+render();
 </script>
 
 </body>
